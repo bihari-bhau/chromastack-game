@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CHROMASTACK — Colour Block Game</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --text: #f0f0f8;
+    --muted: #6060a0;
+    --accent: #00ffe1;
+    --danger: #ff3c6e;
+    --warn: #ffcc00;
+    --success: #39ff84;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Ambient grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,225,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,225,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(0,255,225,0.07) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  #app {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    max-width: 560px;
+    padding: 16px;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    text-align: center;
+    width: 100%;
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 3.6rem;
+    letter-spacing: 6px;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--accent), #a78bfa, #ff3c6e);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 18px rgba(0,255,225,0.35));
+  }
+
+  .tagline {
+    font-size: 0.65rem;
+    letter-spacing: 4px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* ── HUD ── */
+  .hud {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .hud-cell {
+    padding: 12px 16px;
+    text-align: center;
+    border-right: 1px solid var(--border);
+  }
+
+  .hud-cell:last-child { border-right: none; }
+
+  .hud-label {
+    font-size: 0.58rem;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .hud-value {
+    font-size: 1.5rem;
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 2px;
+    color: var(--text);
+    line-height: 1.2;
+  }
+
+  #level-val { color: var(--accent); }
+  #timer-val { color: var(--warn); }
+
+  /* ── PROGRESS BAR ── */
+  .progress-wrap {
+    width: 100%;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  #progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #a78bfa);
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.4s ease;
+    box-shadow: 0 0 12px rgba(0,255,225,0.6);
+  }
+
+  /* ── GAME BOARD ── */
+  #board-wrap {
+    width: 100%;
+    position: relative;
+  }
+
+  #board {
+    display: grid;
+    gap: 5px;
+    width: 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 10px;
+  }
+
+  .cell {
+    aspect-ratio: 1;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.15s ease;
+    position: relative;
+    outline: 2px solid transparent;
+  }
+
+  .cell:hover {
+    transform: scale(1.06);
+    z-index: 2;
+  }
+
+  .cell.selected {
+    outline: 2px solid #fff;
+    transform: scale(1.08);
+    z-index: 3;
+    box-shadow: 0 0 18px rgba(255,255,255,0.35);
+  }
+
+  .cell.matched {
+    animation: pop 0.35s ease forwards;
+  }
+
+  .cell.shake {
+    animation: shake 0.3s ease;
+  }
+
+  @keyframes pop {
+    0%   { transform: scale(1.15); opacity: 1; }
+    60%  { transform: scale(0.5);  opacity: 0.6; }
+    100% { transform: scale(0);    opacity: 0; }
+  }
+
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25%     { transform: translateX(-5px); }
+    75%     { transform: translateX(5px); }
+  }
+
+  @keyframes drop-in {
+    0%   { transform: translateY(-30px); opacity: 0; }
+    100% { transform: translateY(0);     opacity: 1; }
+  }
+
+  .cell.drop-in {
+    animation: drop-in 0.25s ease forwards;
+  }
+
+  /* ── INSTRUCTIONS ── */
+  .instructions {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 1px;
+    line-height: 1.8;
+  }
+
+  .instructions span { color: var(--accent); }
+
+  /* ── TARGET DISPLAY ── */
+  .target-wrap {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .target-label {
+    font-size: 0.58rem;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .target-colors {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .target-chip {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: 2px solid rgba(255,255,255,0.15);
+    transition: box-shadow 0.2s;
+  }
+
+  .target-chip.done {
+    box-shadow: 0 0 12px rgba(57,255,132,0.6);
+    border-color: var(--success);
+    opacity: 0.5;
+  }
+
+  .target-desc {
+    font-size: 0.62rem;
+    color: var(--muted);
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  /* ── COMBO DISPLAY ── */
+  #combo-display {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 4rem;
+    letter-spacing: 4px;
+    color: var(--warn);
+    text-shadow: 0 0 30px rgba(255,204,0,0.8);
+    pointer-events: none;
+    z-index: 100;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  #combo-display.show {
+    transform: translate(-50%, -50%) scale(1.1);
+    animation: combo-anim 0.8s ease forwards;
+  }
+
+  @keyframes combo-anim {
+    0%   { transform: translate(-50%,-50%) scale(0);   opacity: 1; }
+    30%  { transform: translate(-50%,-70%) scale(1.2); opacity: 1; }
+    100% { transform: translate(-50%,-90%) scale(0.8); opacity: 0; }
+  }
+
+  /* ── OVERLAY SCREENS ── */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10,10,15,0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    gap: 20px;
+    backdrop-filter: blur(12px);
+    text-align: center;
+    padding: 24px;
+  }
+
+  .overlay.hidden { display: none; }
+
+  .overlay-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 4rem;
+    letter-spacing: 6px;
+    background: linear-gradient(135deg, var(--accent), #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .overlay-sub {
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    color: var(--muted);
+    max-width: 320px;
+    line-height: 1.9;
+  }
+
+  .overlay-stats {
+    display: flex;
+    gap: 32px;
+  }
+
+  .stat-block {
+    text-align: center;
+  }
+
+  .stat-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.5rem;
+    letter-spacing: 3px;
+    color: var(--text);
+  }
+
+  .stat-lbl {
+    font-size: 0.58rem;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding: 14px 36px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  }
+
+  .btn:hover {
+    background: var(--accent);
+    color: var(--bg);
+    box-shadow: 0 0 24px rgba(0,255,225,0.4);
+  }
+
+  .btn.danger {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
+  .btn.danger:hover {
+    background: var(--danger);
+    color: #fff;
+    box-shadow: 0 0 24px rgba(255,60,110,0.4);
+  }
+
+  /* ── LEVEL BADGE ── */
+  .level-badge {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 5rem;
+    color: var(--accent);
+    letter-spacing: 4px;
+    filter: drop-shadow(0 0 24px rgba(0,255,225,0.5));
+  }
+
+  /* ── MOVES LEFT ── */
+  .moves-bar {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .move-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    transition: background 0.2s, transform 0.2s;
+    box-shadow: 0 0 6px rgba(0,255,225,0.5);
+  }
+
+  .move-dot.used {
+    background: var(--border);
+    box-shadow: none;
+    transform: scale(0.7);
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- Combo Flash -->
+<div id="combo-display">COMBO!</div>
+
+<!-- START SCREEN -->
+<div class="overlay" id="start-screen">
+  <div class="overlay-title">CHROMASTACK</div>
+  <div class="overlay-sub">
+    Match <span style="color:var(--accent)">groups of identical colour blocks</span> to clear the board.<br>
+    Reach the target score on each level to advance.<br>
+    10 levels of chromatic chaos await.
+  </div>
+  <div style="font-size:0.62rem;color:var(--muted);letter-spacing:2px;line-height:2">
+    🖱 CLICK a block to select · CLICK adjacent same-colour to chain<br>
+    💥 Bigger groups = more points + combo multiplier
+  </div>
+  <button class="btn" onclick="startGame()">START GAME</button>
+</div>
+
+<!-- LEVEL CLEAR SCREEN -->
+<div class="overlay hidden" id="level-clear-screen">
+  <div style="font-size:0.65rem;letter-spacing:4px;color:var(--success);text-transform:uppercase">Level Complete</div>
+  <div class="level-badge" id="lc-level">01</div>
+  <div class="overlay-stats">
+    <div class="stat-block">
+      <div class="stat-num" id="lc-score">0</div>
+      <div class="stat-lbl">Score</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-num" id="lc-moves">0</div>
+      <div class="stat-lbl">Moves Left</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-num" id="lc-combo">0</div>
+      <div class="stat-lbl">Best Combo</div>
+    </div>
+  </div>
+  <button class="btn" onclick="nextLevel()">NEXT LEVEL →</button>
+</div>
+
+<!-- GAME OVER SCREEN -->
+<div class="overlay hidden" id="gameover-screen">
+  <div class="overlay-title" style="background:linear-gradient(135deg,var(--danger),#ff8c00);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">GAME OVER</div>
+  <div class="overlay-sub">Time ran out or no moves left!<br>Better luck next time.</div>
+  <div class="overlay-stats">
+    <div class="stat-block">
+      <div class="stat-num" id="go-score">0</div>
+      <div class="stat-lbl">Final Score</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-num" id="go-level">1</div>
+      <div class="stat-lbl">Level Reached</div>
+    </div>
+  </div>
+  <button class="btn danger" onclick="startGame()">TRY AGAIN</button>
+</div>
+
+<!-- WIN SCREEN -->
+<div class="overlay hidden" id="win-screen">
+  <div class="overlay-title" style="background:linear-gradient(135deg,var(--success),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">YOU WIN!</div>
+  <div class="overlay-sub">All 10 levels conquered!<br>You are a true Chromastack master.</div>
+  <div class="overlay-stats">
+    <div class="stat-block">
+      <div class="stat-num" id="win-score">0</div>
+      <div class="stat-lbl">Final Score</div>
+    </div>
+  </div>
+  <button class="btn" onclick="startGame()">PLAY AGAIN</button>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <div class="header">
+    <div class="logo">CHROMASTACK</div>
+    <div class="tagline">Colour · Match · Conquer</div>
+  </div>
+
+  <div class="hud">
+    <div class="hud-cell">
+      <div class="hud-label">Level</div>
+      <div class="hud-value" id="level-val">1</div>
+    </div>
+    <div class="hud-cell">
+      <div class="hud-label">Score</div>
+      <div class="hud-value" id="score-val">0</div>
+    </div>
+    <div class="hud-cell">
+      <div class="hud-label">Time</div>
+      <div class="hud-value" id="timer-val">60</div>
+    </div>
+  </div>
+
+  <div class="progress-wrap">
+    <div id="progress-bar"></div>
+  </div>
+
+  <!-- Target row -->
+  <div class="target-wrap">
+    <div class="target-label">Target</div>
+    <div class="target-colors" id="target-colors"></div>
+    <div class="target-desc" id="target-desc">Clear these colours</div>
+  </div>
+
+  <!-- Moves left -->
+  <div class="moves-bar" id="moves-bar"></div>
+
+  <!-- Board -->
+  <div id="board-wrap">
+    <div id="board"></div>
+  </div>
+
+  <div class="instructions">
+    <span>Click</span> a block · <span>Click again</span> to match groups · <span>3+</span> triggers a combo
+  </div>
+</div>
+
+<script>
+/* ─────────────────────────────────────────
+   CHROMASTACK — Game Engine
+───────────────────────────────────────── */
+
+const LEVELS = [
+  { cols:6, rows:6, colors:3, time:90, target:40,  moves:20 },  // 1
+  { cols:6, rows:6, colors:3, time:85, target:60,  moves:22 },  // 2
+  { cols:7, rows:7, colors:4, time:80, target:90,  moves:25 },  // 3
+  { cols:7, rows:7, colors:4, time:75, target:120, moves:25 },  // 4
+  { cols:8, rows:8, colors:4, time:70, target:160, moves:28 },  // 5
+  { cols:8, rows:8, colors:5, time:65, target:200, moves:28 },  // 6
+  { cols:8, rows:8, colors:5, time:60, target:250, moves:30 },  // 7
+  { cols:9, rows:9, colors:5, time:55, target:310, moves:30 },  // 8
+  { cols:9, rows:9, colors:6, time:50, target:370, moves:32 },  // 9
+  { cols:9, rows:9, colors:6, time:45, target:440, moves:35 },  // 10
+];
+
+const PALETTE = [
+  '#ff3c6e', // red-pink
+  '#00ffe1', // cyan
+  '#ffcc00', // yellow
+  '#a78bfa', // violet
+  '#39ff84', // green
+  '#ff8c00', // orange
+];
+
+let state = {
+  level: 1,
+  score: 0,
+  grid: [],
+  cols: 0,
+  rows: 0,
+  selected: null,
+  timer: 0,
+  timerInterval: null,
+  movesLeft: 0,
+  bestCombo: 0,
+  currentCombo: 0,
+  targetColors: [],
+  colorClears: {},
+};
+
+/* ── DOM refs ── */
+const $board      = document.getElementById('board');
+const $score      = document.getElementById('score-val');
+const $level      = document.getElementById('level-val');
+const $timer      = document.getElementById('timer-val');
+const $progress   = document.getElementById('progress-bar');
+const $movesBar   = document.getElementById('moves-bar');
+const $targetCols = document.getElementById('target-colors');
+const $targetDesc = document.getElementById('target-desc');
+const $combo      = document.getElementById('combo-display');
+
+/* ── Screens ── */
+function showScreen(id) {
+  ['start-screen','level-clear-screen','gameover-screen','win-screen'].forEach(s => {
+    document.getElementById(s).classList.add('hidden');
+  });
+  if (id) document.getElementById(id).classList.remove('hidden');
+}
+
+/* ── Init ── */
+function startGame() {
+  state.level = 1;
+  state.score = 0;
+  loadLevel();
+}
+
+function loadLevel() {
+  showScreen(null);
+  const cfg = LEVELS[state.level - 1];
+  state.cols = cfg.cols;
+  state.rows = cfg.rows;
+  state.movesLeft = cfg.moves;
+  state.bestCombo = 0;
+  state.currentCombo = 0;
+  state.selected = null;
+
+  // Pick target colors for this level
+  const colorCount = cfg.colors;
+  const shuffled = [...PALETTE].sort(() => Math.random() - 0.5).slice(0, colorCount);
+  state.targetColors = shuffled;
+  state.colorClears = {};
+  shuffled.forEach(c => state.colorClears[c] = false);
+
+  // Generate grid
+  state.grid = [];
+  for (let r = 0; r < cfg.rows; r++) {
+    state.grid.push([]);
+    for (let c = 0; c < cfg.cols; c++) {
+      state.grid[r].push(shuffled[Math.floor(Math.random() * colorCount)]);
+    }
+  }
+
+  // Timer
+  clearInterval(state.timerInterval);
+  state.timer = cfg.time;
+  state.timerInterval = setInterval(tickTimer, 1000);
+
+  updateHUD();
+  renderTarget();
+  renderBoard();
+  renderMoves();
+}
+
+function tickTimer() {
+  state.timer--;
+  $timer.textContent = state.timer;
+  if (state.timer <= 10) $timer.style.color = 'var(--danger)';
+  else $timer.style.color = 'var(--warn)';
+  if (state.timer <= 0) triggerGameOver('time');
+}
+
+/* ── HUD ── */
+function updateHUD() {
+  $score.textContent = state.score;
+  $level.textContent = state.level;
+  $timer.textContent = state.timer;
+
+  const cfg = LEVELS[state.level - 1];
+  const pct = Math.min(100, (state.score / cfg.target) * 100);
+  $progress.style.width = pct + '%';
+}
+
+function renderMoves() {
+  $movesBar.innerHTML = '';
+  const cfg = LEVELS[state.level - 1];
+  for (let i = 0; i < cfg.moves; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'move-dot' + (i >= state.movesLeft ? ' used' : '');
+    $movesBar.appendChild(dot);
+  }
+}
+
+function renderTarget() {
+  $targetCols.innerHTML = '';
+  state.targetColors.forEach(color => {
+    const chip = document.createElement('div');
+    chip.className = 'target-chip' + (state.colorClears[color] ? ' done' : '');
+    chip.style.background = color;
+    chip.dataset.color = color;
+    $targetCols.appendChild(chip);
+  });
+  const remaining = Object.values(state.colorClears).filter(v => !v).length;
+  $targetDesc.textContent = `${remaining} colour${remaining !== 1 ? 's' : ''} to clear`;
+}
+
+/* ── Board render ── */
+function renderBoard() {
+  const cfg = LEVELS[state.level - 1];
+  $board.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
+  $board.innerHTML = '';
+
+  for (let r = 0; r < state.rows; r++) {
+    for (let c = 0; c < state.cols; c++) {
+      const cell = document.createElement('div');
+      const color = state.grid[r][c];
+      cell.className = 'cell';
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+
+      if (color) {
+        cell.style.background = color;
+        cell.style.boxShadow = `0 3px 14px ${color}55`;
+      } else {
+        cell.style.background = 'transparent';
+        cell.style.cursor = 'default';
+        cell.style.boxShadow = 'none';
+      }
+
+      if (state.selected && state.selected.r === r && state.selected.c === c && color) {
+        cell.classList.add('selected');
+      }
+
+      cell.addEventListener('click', () => handleClick(r, c));
+      $board.appendChild(cell);
+    }
+  }
+}
+
+/* ── Click logic ── */
+function handleClick(r, c) {
+  const color = state.grid[r][c];
+  if (!color) return;
+
+  if (!state.selected) {
+    state.selected = { r, c };
+    renderBoard();
+    return;
+  }
+
+  // Same cell → deselect
+  if (state.selected.r === r && state.selected.c === c) {
+    state.selected = null;
+    renderBoard();
+    return;
+  }
+
+  // Find connected group from selected
+  const group = getConnectedGroup(state.selected.r, state.selected.c, state.grid[state.selected.r][state.selected.c]);
+
+  if (group.length < 2) {
+    // shake
+    const idx = state.selected.r * state.cols + state.selected.c;
+    const cellEl = $board.children[idx];
+    cellEl.classList.add('shake');
+    setTimeout(() => cellEl.classList.remove('shake'), 350);
+    // Switch selection
+    state.selected = { r, c };
+    renderBoard();
+    return;
+  }
+
+  // Check clicked cell is in group
+  const inGroup = group.some(g => g.r === r && g.c === c);
+  if (!inGroup) {
+    // New selection
+    state.selected = { r, c };
+    renderBoard();
+    return;
+  }
+
+  // Match! Clear group
+  clearGroup(group, state.grid[state.selected.r][state.selected.c]);
+}
+
+function getConnectedGroup(r, c, color) {
+  const visited = new Set();
+  const queue = [{ r, c }];
+  const group = [];
+
+  while (queue.length) {
+    const { r: cr, c: cc } = queue.shift();
+    const key = `${cr},${cc}`;
+    if (visited.has(key)) continue;
+    if (cr < 0 || cr >= state.rows || cc < 0 || cc >= state.cols) continue;
+    if (state.grid[cr][cc] !== color) continue;
+    visited.add(key);
+    group.push({ r: cr, c: cc });
+    queue.push({ r: cr-1, c: cc }, { r: cr+1, c: cc }, { r: cr, c: cc-1 }, { r: cr, c: cc+1 });
+  }
+  return group;
+}
+
+async function clearGroup(group, color) {
+  state.selected = null;
+  state.movesLeft--;
+
+  // Animate pop
+  group.forEach(({ r, c }) => {
+    const idx = r * state.cols + c;
+    const el = $board.children[idx];
+    if (el) el.classList.add('matched');
+  });
+
+  await sleep(320);
+
+  // Remove from grid
+  group.forEach(({ r, c }) => {
+    state.grid[r][c] = null;
+  });
+
+  // Score: base × size multiplier
+  const size = group.length;
+  const multiplier = size >= 6 ? 3 : size >= 4 ? 2 : 1;
+  const points = size * 10 * multiplier;
+
+  // Combo
+  if (size >= 3) {
+    state.currentCombo++;
+    if (state.currentCombo > state.bestCombo) state.bestCombo = state.currentCombo;
+    if (state.currentCombo >= 2) showCombo(state.currentCombo);
+  } else {
+    state.currentCombo = 0;
+  }
+
+  state.score += points * (state.currentCombo > 1 ? state.currentCombo : 1);
+
+  // Check if this color is fully cleared
+  const remainingOfColor = state.grid.flat().filter(c => c === color).length;
+  if (remainingOfColor === 0 && state.colorClears[color] === false) {
+    state.colorClears[color] = true;
+    state.score += 50; // bonus
+  }
+
+  // Gravity: drop cells down
+  applyGravity();
+
+  updateHUD();
+  renderTarget();
+  renderMoves();
+  renderBoard();
+
+  // Animate new drops
+  await sleep(50);
+  animateDrops();
+
+  // Check win conditions
+  checkLevelWin();
+  if (state.movesLeft <= 0) {
+    await sleep(400);
+    checkLevelWin(true);
+  }
+}
+
+function applyGravity() {
+  for (let c = 0; c < state.cols; c++) {
+    let writeRow = state.rows - 1;
+    for (let r = state.rows - 1; r >= 0; r--) {
+      if (state.grid[r][c] !== null) {
+        state.grid[writeRow][c] = state.grid[r][c];
+        if (writeRow !== r) state.grid[r][c] = null;
+        writeRow--;
+      }
+    }
+    for (let r = writeRow; r >= 0; r--) {
+      state.grid[r][c] = null;
+    }
+  }
+}
+
+function animateDrops() {
+  for (let r = 0; r < state.rows; r++) {
+    for (let c = 0; c < state.cols; c++) {
+      if (state.grid[r][c]) {
+        const idx = r * state.cols + c;
+        const el = $board.children[idx];
+        if (el) {
+          el.classList.add('drop-in');
+          el.addEventListener('animationend', () => el.classList.remove('drop-in'), { once: true });
+        }
+      }
+    }
+  }
+}
+
+function showCombo(n) {
+  $combo.textContent = `COMBO ×${n}!`;
+  $combo.classList.remove('show');
+  void $combo.offsetWidth;
+  $combo.classList.add('show');
+  setTimeout(() => $combo.classList.remove('show'), 900);
+}
+
+/* ── Win / Lose ── */
+function checkLevelWin(forceFail = false) {
+  const cfg = LEVELS[state.level - 1];
+  const allColorsCleared = Object.values(state.colorClears).every(v => v);
+
+  if (allColorsCleared || state.score >= cfg.target) {
+    clearInterval(state.timerInterval);
+    setTimeout(() => levelClear(), 500);
+    return;
+  }
+
+  if (forceFail || state.movesLeft <= 0) {
+    // Check if target met
+    if (state.score >= cfg.target) {
+      clearInterval(state.timerInterval);
+      setTimeout(() => levelClear(), 500);
+    } else {
+      clearInterval(state.timerInterval);
+      setTimeout(() => triggerGameOver('moves'), 400);
+    }
+  }
+}
+
+function levelClear() {
+  document.getElementById('lc-level').textContent = String(state.level).padStart(2,'0');
+  document.getElementById('lc-score').textContent = state.score;
+  document.getElementById('lc-moves').textContent = state.movesLeft;
+  document.getElementById('lc-combo').textContent = state.bestCombo;
+  showScreen('level-clear-screen');
+}
+
+function nextLevel() {
+  if (state.level >= 10) {
+    document.getElementById('win-score').textContent = state.score;
+    showScreen('win-screen');
+    return;
+  }
+  state.level++;
+  loadLevel();
+}
+
+function triggerGameOver(reason) {
+  clearInterval(state.timerInterval);
+  document.getElementById('go-score').textContent = state.score;
+  document.getElementById('go-level').textContent = state.level;
+  showScreen('gameover-screen');
+}
+
+/* ── Utility ── */
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>
